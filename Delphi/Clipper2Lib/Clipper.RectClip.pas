@@ -2,11 +2,11 @@ unit Clipper.RectClip;
 
 (*******************************************************************************
 * Author    :  Angus Johnson                                                   *
-* Date      :  9 September 2023                                                *
-* Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2023                                         *
+* Date      :  11 October 2025                                                 *
+* Website   :  https://www.angusj.com                                          *
+* Copyright :  Angus Johnson 2010-2025                                         *
 * Purpose   :  FAST rectangular clipping                                       *
-* License   :  http://www.boost.org/LICENSE_1_0.txt                            *
+* License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************)
 
 interface
@@ -121,13 +121,13 @@ begin
 end;
 //------------------------------------------------------------------------------
 
-function GetSegmentIntersection(p1: TPoint64;
+function GetSegmentIntersectPt2(p1: TPoint64;
 p2: TPoint64; p3: TPoint64; p4: TPoint64; out ip: TPoint64): Boolean;
 var
-  res1, res2, res3, res4: double;
+  res1, res2, res3, res4: integer;
 begin
-  res1 := CrossProduct(p1, p3, p4);
-  res2 := CrossProduct(p2, p3, p4);
+  res1 := CrossProductSign(p1, p3, p4);
+  res2 := CrossProductSign(p2, p3, p4);
   if (res1 = 0) then
   begin
     ip := p1;
@@ -160,8 +160,8 @@ begin
     Exit;
   end;
 
-  res3 := CrossProduct(p3, p1, p2);
-  res4 := CrossProduct(p4, p1, p2);
+  res3 := CrossProductSign(p3, p1, p2);
+  res4 := CrossProductSign(p4, p1, p2);
   if (res3 = 0) then
   begin
     ip := p3;
@@ -189,7 +189,7 @@ begin
   end
   else
     // segments must intersect to get here
-    Result := GetIntersectPoint(p1, p2, p3, p4, ip);
+    Result := GetLineIntersectPt(p1, p2, p3, p4, ip);
 end;
 //------------------------------------------------------------------------------
 
@@ -201,60 +201,60 @@ begin
   Result := True;
   case loc of
     locLeft:
-      if GetSegmentIntersection(p, p2, rectPath[0], rectPath[3], ip) then
+      if GetSegmentIntersectPt2(p, p2, rectPath[0], rectPath[3], ip) then
         //Result := True
       else if (p.Y < rectPath[0].Y) and
-        GetSegmentIntersection(p, p2, rectPath[0], rectPath[1], ip) then
+        GetSegmentIntersectPt2(p, p2, rectPath[0], rectPath[1], ip) then
           loc := locTop
-      else if GetSegmentIntersection(p, p2, rectPath[2], rectPath[3], ip) then
+      else if GetSegmentIntersectPt2(p, p2, rectPath[2], rectPath[3], ip) then
         loc := locBottom
       else
         Result := False;
 
     locRight:
-      if GetSegmentIntersection(p, p2, rectPath[1], rectPath[2], ip) then
+      if GetSegmentIntersectPt2(p, p2, rectPath[1], rectPath[2], ip) then
         //Result := True
       else if (p.Y < rectPath[0].Y) and
-        GetSegmentIntersection(p, p2, rectPath[0], rectPath[1], ip) then
+        GetSegmentIntersectPt2(p, p2, rectPath[0], rectPath[1], ip) then
           loc := locTop
-      else if GetSegmentIntersection(p, p2, rectPath[2], rectPath[3], ip) then
+      else if GetSegmentIntersectPt2(p, p2, rectPath[2], rectPath[3], ip) then
         loc := locBottom
       else
         Result := False;
 
     locTop:
-      if GetSegmentIntersection(p, p2, rectPath[0], rectPath[1], ip) then
+      if GetSegmentIntersectPt2(p, p2, rectPath[0], rectPath[1], ip) then
         //Result := True
       else if (p.X < rectPath[0].X) and
-        GetSegmentIntersection(p, p2, rectPath[0], rectPath[3], ip) then
+        GetSegmentIntersectPt2(p, p2, rectPath[0], rectPath[3], ip) then
           loc := locLeft
       else if (p.X > rectPath[1].X) and
-        GetSegmentIntersection(p, p2, rectPath[1], rectPath[2], ip) then
+        GetSegmentIntersectPt2(p, p2, rectPath[1], rectPath[2], ip) then
           loc := locRight
       else
         Result := False;
 
     locBottom:
-      if GetSegmentIntersection(p, p2, rectPath[2], rectPath[3], ip) then
+      if GetSegmentIntersectPt2(p, p2, rectPath[2], rectPath[3], ip) then
         //Result := True
       else if (p.X < rectPath[3].X) and
-        GetSegmentIntersection(p, p2, rectPath[0], rectPath[3], ip) then
+        GetSegmentIntersectPt2(p, p2, rectPath[0], rectPath[3], ip) then
           loc := locLeft
       else if (p.X > rectPath[2].X) and
-        GetSegmentIntersection(p, p2, rectPath[1], rectPath[2], ip) then
+        GetSegmentIntersectPt2(p, p2, rectPath[1], rectPath[2], ip) then
           loc := locRight
       else
         Result := False;
 
     else // loc = rInside
     begin
-      if GetSegmentIntersection(p, p2, rectPath[0], rectPath[3], ip) then
+      if GetSegmentIntersectPt2(p, p2, rectPath[0], rectPath[3], ip) then
         loc := locLeft
-      else if GetSegmentIntersection(p, p2, rectPath[0], rectPath[1], ip) then
+      else if GetSegmentIntersectPt2(p, p2, rectPath[0], rectPath[1], ip) then
         loc := locTop
-      else if GetSegmentIntersection(p, p2, rectPath[1], rectPath[2], ip) then
+      else if GetSegmentIntersectPt2(p, p2, rectPath[1], rectPath[2], ip) then
         loc := locRight
-      else if GetSegmentIntersection(p, p2, rectPath[2], rectPath[3], ip) then
+      else if GetSegmentIntersectPt2(p, p2, rectPath[2], rectPath[3], ip) then
         loc := locBottom
       else
         Result := False;
@@ -282,7 +282,7 @@ function GetAdjacentLocation(loc: TLocation; isClockwise: Boolean): TLocation;
 var
   delta: integer;
 begin
-  if isClockwise then delta := 1 else delta := 3;
+  delta := Iif(isClockwise, 1 , 3);
   Result := TLocation((Ord(loc) + delta) mod 4);
 end;
 //------------------------------------------------------------------------------
@@ -291,9 +291,9 @@ function IsClockwise(prev, curr: TLocation;
   const prevPt, currPt, rectMidPt: TPoint64): Boolean;
   {$IFDEF INLINING} inline; {$ENDIF}
 begin
-  if AreOpposites(prev, curr) then
-    Result := CrossProduct(prevPt, rectMidPt, currPt) < 0 else
-    Result := HeadingClockwise(prev, curr);
+  Result := Iif(AreOpposites(prev, curr),
+    CrossProductSign(prevPt, rectMidPt, currPt) < 0,
+    HeadingClockwise(prev, curr));
 end;
 //------------------------------------------------------------------------------
 
@@ -340,7 +340,7 @@ begin
   if Assigned(op.edge) then Exit;
   op.edge := @edge;
   len := Length(edge);
-  SetLength(edge, len+1);
+  SetLength(edge, len + 1);
   edge[len] := op;
 end;
 //------------------------------------------------------------------------------
@@ -517,9 +517,7 @@ var
   cnrIdx: integer;
 begin
   if prev = curr then Exit;
-  if (HeadingClockwise(prev, curr)) then
-    cnrIdx := Ord(prev) else
-    cnrIdx := Ord(curr);
+  cnrIdx := Iif(HeadingClockwise(prev, curr), Ord(prev), Ord(curr));
   Add(fRectPath[cnrIdx]);
 end;
 //------------------------------------------------------------------------------
@@ -620,7 +618,7 @@ var
   path: TPath64;
 begin
   result := nil;
-  len:= Length(paths);
+  len := Length(paths);
   for i := 0 to len -1 do
   begin
     path := paths[i];
@@ -639,7 +637,7 @@ begin
     ExecuteInternal(path);
     CheckEdges;
     for j := 0 to 3 do
-      TidyEdgePair(j, fEdges[j*2], fEdges[j*2 +1]);
+      TidyEdgePair(j, fEdges[j * 2], fEdges[j * 2 + 1]);
 
     for j := 0 to fResults.Count -1 do
       AppendPath(Result, GetPath(j));
@@ -652,9 +650,28 @@ begin
 end;
 //------------------------------------------------------------------------------
 
+function StartLocsAreClockwise(const startLocs: TList): Boolean;
+var
+  i,j, res: integer;
+begin
+  res := 0;
+  for i := 1 to startLocs.Count -1 do
+  begin
+    j := Ord(TLocation(startLocs[i])) - Ord(TLocation(startLocs[i - 1]));
+    case j of
+      -1: dec(res);
+      1: inc(res);
+      -3: inc(res);
+      3: dec(res);
+    end;
+  end;
+  result := res > 0;
+end;
+//------------------------------------------------------------------------------
+
 procedure TRectClip64.ExecuteInternal(const path: TPath64);
 var
-  i,highI     : integer;
+  i,j, highI    : integer;
   prevPt,ip,ip2 : TPoint64;
   loc, prevLoc  : TLocation;
   loc2          : TLocation;
@@ -663,6 +680,7 @@ var
   crossingLoc   : TLocation;
   prevCrossLoc  : TLocation;
   isCw          : Boolean;
+  startLocsCW   : Boolean;
 begin
   if (Length(path) < 3) then Exit;
   fStartLocs.Clear;
@@ -799,10 +817,12 @@ begin
       begin
         // yep, the path does fully contain rect
         // so add rect to the solution
+        startLocsCW := StartLocsAreClockwise(fStartLocs);
         for i := 0 to 3 do
         begin
-          Add(fRectPath[i]);
-          AddToEdge(fEdges[i*2], fResults[0]);
+          if startLocsCW then j := i else j := 3 - i;
+          Add(fRectPath[j]);
+          AddToEdge(fEdges[j * 2], fResults[0]);
         end;
       end;
     end;
@@ -842,7 +862,7 @@ begin
 
     op2 := op;
     repeat
-      if (CrossProduct(op2.prev.pt, op2.pt, op2.next.pt) = 0) then
+      if IsCollinear(op2.prev.pt, op2.pt, op2.next.pt) then
       begin
         if op2 = op then
         begin
@@ -876,9 +896,9 @@ begin
           if combinedSet and (1 shl j) <> 0 then
           begin
             if IsHeadingClockwise(op2.prev.pt, op2.pt, j) then
-              AddToEdge(fEdges[j*2], op2)
+              AddToEdge(fEdges[j * 2], op2)
             else
-              AddToEdge(fEdges[j*2+1], op2);
+              AddToEdge(fEdges[j * 2 + 1], op2);
           end;
       end;
       edgeSet1 := edgeSet2;
@@ -1084,7 +1104,7 @@ begin
   op2 := op.next;
   while Assigned(op2) and (op2 <> op) do
   begin
-    if (CrossProduct(op2.prev.pt, op2.pt, op2.next.pt) = 0) then
+    if IsCollinear(op2.prev.pt, op2.pt, op2.next.pt) then
     begin
       op := op2.prev;
       op2 := DisposeOp(op2);
@@ -1114,7 +1134,7 @@ var
 begin
   result := nil;
 
-  len:= Length(paths);
+  len := Length(paths);
   for i := 0 to len -1 do
   begin
     pathrec := GetBounds(paths[i]);

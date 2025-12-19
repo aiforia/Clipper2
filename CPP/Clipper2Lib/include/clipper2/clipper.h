@@ -1,30 +1,28 @@
 /*******************************************************************************
 * Author    :  Angus Johnson                                                   *
-* Date      :  16 July 2023                                                    *
-* Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2023                                         *
+* Date      :  5 March 2025                                                    *
+* Website   :  https://www.angusj.com                                          *
+* Copyright :  Angus Johnson 2010-2025                                         *
 * Purpose   :  This module provides a simple interface to the Clipper Library  *
-* License   :  http://www.boost.org/LICENSE_1_0.txt                            *
+* License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************/
 
 #ifndef CLIPPER_H
 #define CLIPPER_H
 
-#include <cstdlib>
+#include "clipper2/clipper.core.h"
+#include "clipper2/clipper.engine.h"
+#include "clipper2/clipper.offset.h"
+#include "clipper2/clipper.rectclip.h"
+#include "clipper2/clipper.minkowski.h"
+#include "clipper2/clipper.triangulation.h"
 #include <type_traits>
-#include <vector>
-
-#include "clipper.core.h"
-#include "clipper.engine.h"
-#include "clipper.offset.h"
-#include "clipper.minkowski.h"
-#include "clipper.rectclip.h"
 
 namespace Clipper2Lib {
 
   inline Paths64 BooleanOp(ClipType cliptype, FillRule fillrule,
     const Paths64& subjects, const Paths64& clips)
-  {    
+  {
     Paths64 result;
     Clipper64 clipper;
     clipper.AddSubject(subjects);
@@ -47,7 +45,7 @@ namespace Clipper2Lib {
     const PathsD& subjects, const PathsD& clips, int precision = 2)
   {
     int error_code = 0;
-    CheckPrecision(precision, error_code);
+    CheckPrecisionRange(precision, error_code);
     PathsD result;
     if (error_code) return result;
     ClipperD clipper(precision);
@@ -58,12 +56,12 @@ namespace Clipper2Lib {
   }
 
   inline void BooleanOp(ClipType cliptype, FillRule fillrule,
-    const PathsD& subjects, const PathsD& clips, 
+    const PathsD& subjects, const PathsD& clips,
     PolyTreeD& polytree, int precision = 2)
   {
     polytree.Clear();
     int error_code = 0;
-    CheckPrecision(precision, error_code);
+    CheckPrecisionRange(precision, error_code);
     if (error_code) return;
     ClipperD clipper(precision);
     clipper.AddSubject(subjects);
@@ -75,7 +73,7 @@ namespace Clipper2Lib {
   {
     return BooleanOp(ClipType::Intersection, fillrule, subjects, clips);
   }
-  
+
   inline PathsD Intersect(const PathsD& subjects, const PathsD& clips, FillRule fillrule, int decimal_prec = 2)
   {
     return BooleanOp(ClipType::Intersection, fillrule, subjects, clips, decimal_prec);
@@ -104,7 +102,7 @@ namespace Clipper2Lib {
   {
     PathsD result;
     int error_code = 0;
-    CheckPrecision(precision, error_code);
+    CheckPrecisionRange(precision, error_code);
     if (error_code) return result;
     ClipperD clipper(precision);
     clipper.AddSubject(subjects);
@@ -145,22 +143,22 @@ namespace Clipper2Lib {
   }
 
   inline PathsD InflatePaths(const PathsD& paths, double delta,
-    JoinType jt, EndType et, double miter_limit = 2.0, 
+    JoinType jt, EndType et, double miter_limit = 2.0,
     int precision = 2, double arc_tolerance = 0.0)
   {
     int error_code = 0;
-    CheckPrecision(precision, error_code);
+    CheckPrecisionRange(precision, error_code);
     if (!delta) return paths;
     if (error_code) return PathsD();
     const double scale = std::pow(10, precision);
-    ClipperOffset clip_offset(miter_limit, arc_tolerance);
+    ClipperOffset clip_offset(miter_limit, arc_tolerance * scale);
     clip_offset.AddPaths(ScalePaths<int64_t,double>(paths, scale, error_code), jt, et);
     if (error_code) return PathsD();
     Paths64 solution;
     clip_offset.Execute(delta * scale, solution);
     return ScalePaths<double, int64_t>(solution, 1 / scale, error_code);
   }
-
+  
   template <typename T>
   inline Path<T> TranslatePath(const Path<T>& path, T dx, T dy)
   {
@@ -219,13 +217,13 @@ namespace Clipper2Lib {
   {
     if (rect.IsEmpty() || paths.empty()) return PathsD();
     int error_code = 0;
-    CheckPrecision(precision, error_code);
+    CheckPrecisionRange(precision, error_code);
     if (error_code) return PathsD();
     const double scale = std::pow(10, precision);
     Rect64 r = ScaleRect<int64_t, double>(rect, scale);
     RectClip64 rc(r);
     Paths64 pp = ScalePaths<int64_t, double>(paths, scale, error_code);
-    if (error_code) return PathsD(); // ie: error_code result is lost 
+    if (error_code) return PathsD(); // ie: error_code result is lost
     return ScalePaths<double, int64_t>(
       rc.Execute(pp), 1 / scale, error_code);
   }
@@ -251,7 +249,7 @@ namespace Clipper2Lib {
   {
     if (rect.IsEmpty() || lines.empty()) return PathsD();
     int error_code = 0;
-    CheckPrecision(precision, error_code);
+    CheckPrecisionRange(precision, error_code);
     if (error_code) return PathsD();
     const double scale = std::pow(10, precision);
     Rect64 r = ScaleRect<int64_t, double>(rect, scale);
@@ -272,14 +270,14 @@ namespace Clipper2Lib {
 
     inline void PolyPathToPaths64(const PolyPath64& polypath, Paths64& paths)
     {
-      paths.push_back(polypath.Polygon());
+      paths.emplace_back(polypath.Polygon());
       for (const auto& child : polypath)
         PolyPathToPaths64(*child, paths);
     }
 
     inline void PolyPathToPathsD(const PolyPathD& polypath, PathsD& paths)
     {
-      paths.push_back(polypath.Polygon());
+      paths.emplace_back(polypath.Polygon());
       for (const auto& child : polypath)
         PolyPathToPathsD(*child, paths);
     }
@@ -290,8 +288,8 @@ namespace Clipper2Lib {
       {
         // return false if this child isn't fully contained by its parent
 
-        // checking for a single vertex outside is a bit too crude since 
-        // it doesn't account for rounding errors. It's better to check 
+        // checking for a single vertex outside is a bit too crude since
+        // it doesn't account for rounding errors. It's better to check
         // for consecutive vertices found outside the parent's polygon.
 
         int outsideCnt = 0;
@@ -311,7 +309,7 @@ namespace Clipper2Lib {
       return true;
     }
 
-    static void OutlinePolyPath(std::ostream& os, 
+    static void OutlinePolyPath(std::ostream& os,
       size_t idx, bool isHole, size_t count, const std::string& preamble)
     {
       std::string plural = (count == 1) ? "." : "s.";
@@ -341,7 +339,43 @@ namespace Clipper2Lib {
           details::OutlinePolyPathD(os, *pp.Child(i), i, preamble + "  ");
     }
 
-  } // end details namespace 
+    template<typename T, typename U>
+    inline constexpr void MakePathGeneric(const T an_array,
+      size_t array_size, std::vector<U>& result)
+    {
+      result.reserve(array_size / 2);
+      for (size_t i = 0; i < array_size; i +=2)
+#ifdef USINGZ
+        result.emplace_back( an_array[i], an_array[i + 1], 0 );
+#else
+        result.emplace_back( an_array[i], an_array[i + 1] );
+#endif
+    }
+
+    inline size_t GetNext(size_t current, size_t high,
+      const std::vector<bool>& flags)
+    {
+      ++current;
+      while (current <= high && flags[current]) ++current;
+      if (current <= high) return current;
+      current = 0;
+      while (flags[current]) ++current;
+      return current;
+    }
+
+    inline size_t GetPrior(size_t current, size_t high,
+      const std::vector<bool>& flags)
+    {
+      if (current == 0) current = high;
+      else --current;
+      while (current > 0 && flags[current]) --current;
+      if (!flags[current]) return current;
+      current = high;
+      while (flags[current]) --current;
+      return current;
+    }
+
+  } // end details namespace
 
   inline std::ostream& operator<< (std::ostream& os, const PolyTree64& pp)
   {
@@ -385,27 +419,11 @@ namespace Clipper2Lib {
   inline bool CheckPolytreeFullyContainsChildren(const PolyTree64& polytree)
   {
     for (const auto& child : polytree)
-      if (child->Count() > 0 && 
+      if (child->Count() > 0 &&
         !details::PolyPath64ContainsChildren(*child))
           return false;
     return true;
   }
-
-  namespace details {
-
-    template<typename T, typename U>
-    inline constexpr void MakePathGeneric(const T list, size_t size,
-      std::vector<U>& result)
-    {
-      for (size_t i = 0; i < size; ++i)
-#ifdef USINGZ
-        result[i / 2] = U{list[i], list[++i], 0};
-#else
-        result[i / 2] = U{list[i], list[++i]};
-#endif
-    }
-
-  } // end details namespace
 
   template<typename T,
     typename std::enable_if<
@@ -417,7 +435,7 @@ namespace Clipper2Lib {
     const auto size = list.size() - list.size() % 2;
     if (list.size() != size)
       DoError(non_pair_error_i);  // non-fatal without exception handling
-    Path64 result(size / 2);      // else ignores unpaired value
+    Path64 result;
     details::MakePathGeneric(list, size, result);
     return result;
   }
@@ -431,7 +449,7 @@ namespace Clipper2Lib {
   {
     // Make the compiler error on unpaired value (i.e. no runtime effects).
     static_assert(N % 2 == 0, "MakePath requires an even number of arguments");
-    Path64 result(N / 2);
+    Path64 result;
     details::MakePathGeneric(list, N, result);
     return result;
   }
@@ -446,7 +464,7 @@ namespace Clipper2Lib {
     const auto size = list.size() - list.size() % 2;
     if (list.size() != size)
       DoError(non_pair_error_i);  // non-fatal without exception handling
-    PathD result(size / 2);       // else ignores unpaired value
+    PathD result;
     details::MakePathGeneric(list, size, result);
     return result;
   }
@@ -460,7 +478,7 @@ namespace Clipper2Lib {
   {
     // Make the compiler error on unpaired value (i.e. no runtime effects).
     static_assert(N % 2 == 0, "MakePath requires an even number of arguments");
-    PathD result(N / 2);
+    PathD result;
     details::MakePathGeneric(list, N, result);
     return result;
   }
@@ -474,7 +492,7 @@ namespace Clipper2Lib {
     std::size_t size = N / 3;
     Path64 result(size);
     for (size_t i = 0; i < size; ++i)
-      result[i] = Point64(list[i * 3], 
+      result[i] = Point64(list[i * 3],
         list[i * 3 + 1], list[i * 3 + 2]);
     return result;
   }
@@ -492,7 +510,7 @@ namespace Clipper2Lib {
           list[i * 3 + 1], list[i * 3 + 2]);
     else
       for (size_t i = 0; i < size; ++i)
-        result[i] = PointD(list[i * 3], list[i * 3 + 1], 
+        result[i] = PointD(list[i * 3], list[i * 3 + 1],
           static_cast<int64_t>(list[i * 3 + 2]));
     return result;
   }
@@ -513,32 +531,32 @@ namespace Clipper2Lib {
 
     if (!is_open_path)
     {
-      while (srcIt != stop && !CrossProduct(*stop, *srcIt, *(srcIt + 1)))
+      while (srcIt != stop && IsCollinear(*stop, *srcIt, *(srcIt + 1)))
         ++srcIt;
-      while (srcIt != stop && !CrossProduct(*(stop - 1), *stop, *srcIt))
+      while (srcIt != stop && IsCollinear(*(stop - 1), *stop, *srcIt))
         --stop;
       if (srcIt == stop) return Path64();
     }
 
     prevIt = srcIt++;
-    dst.push_back(*prevIt);
+    dst.emplace_back(*prevIt);
     for (; srcIt != stop; ++srcIt)
     {
-      if (CrossProduct(*prevIt, *srcIt, *(srcIt + 1)))
+      if (!IsCollinear(*prevIt, *srcIt, *(srcIt + 1)))
       {
         prevIt = srcIt;
-        dst.push_back(*prevIt);
+        dst.emplace_back(*prevIt);
       }
     }
 
     if (is_open_path)
-      dst.push_back(*srcIt);
-    else if (CrossProduct(*prevIt, *stop, dst[0]))
-      dst.push_back(*stop);
+      dst.emplace_back(*srcIt);
+    else if (!IsCollinear(*prevIt, *stop, dst[0]))
+      dst.emplace_back(*stop);
     else
     {
       while (dst.size() > 2 &&
-        !CrossProduct(dst[dst.size() - 1], dst[dst.size() - 2], dst[0]))
+        IsCollinear(dst[dst.size() - 1], dst[dst.size() - 2], dst[0]))
           dst.pop_back();
       if (dst.size() < 3) return Path64();
     }
@@ -548,7 +566,7 @@ namespace Clipper2Lib {
   inline PathD TrimCollinear(const PathD& path, int precision, bool is_open_path = false)
   {
     int error_code = 0;
-    CheckPrecision(precision, error_code);
+    CheckPrecisionRange(precision, error_code);
     if (error_code) return PathD();
     const double scale = std::pow(10, precision);
     Path64 p = ScalePath<int64_t, double>(path, scale, error_code);
@@ -583,33 +601,33 @@ namespace Clipper2Lib {
     double cp = std::abs(CrossProduct(pt1, pt2, pt3));
     return (cp * cp) / (DistanceSqr(pt1, pt2) * DistanceSqr(pt2, pt3)) < sin_sqrd_min_angle_rads;
   }
-  
+
   template <typename T>
-  inline Path<T> Ellipse(const Rect<T>& rect, int steps = 0)
+  inline Path<T> Ellipse(const Rect<T>& rect, size_t steps = 0)
   {
-    return Ellipse(rect.MidPoint(), 
-      static_cast<double>(rect.Width()) *0.5, 
+    return Ellipse(rect.MidPoint(),
+      static_cast<double>(rect.Width()) *0.5,
       static_cast<double>(rect.Height()) * 0.5, steps);
   }
 
   template <typename T>
   inline Path<T> Ellipse(const Point<T>& center,
-    double radiusX, double radiusY = 0, int steps = 0)
+    double radiusX, double radiusY = 0, size_t steps = 0)
   {
     if (radiusX <= 0) return Path<T>();
     if (radiusY <= 0) radiusY = radiusX;
     if (steps <= 2)
-      steps = static_cast<int>(PI * sqrt((radiusX + radiusY) / 2));
+      steps = static_cast<size_t>(PI * sqrt((radiusX + radiusY) / 2));
 
     double si = std::sin(2 * PI / steps);
     double co = std::cos(2 * PI / steps);
     double dx = co, dy = si;
     Path<T> result;
     result.reserve(steps);
-    result.push_back(Point<T>(center.x + radiusX, static_cast<double>(center.y)));
-    for (int i = 1; i < steps; ++i)
+    result.emplace_back(center.x + radiusX, static_cast<double>(center.y));
+    for (size_t i = 1; i < steps; ++i)
     {
-      result.push_back(Point<T>(center.x + radiusX * dx, center.y + radiusY * dy));
+      result.emplace_back(center.x + radiusX * dx, center.y + radiusY * dy);
       double x = dx * co - dy * si;
       dy = dy * co + dx * si;
       dx = x;
@@ -618,42 +636,7 @@ namespace Clipper2Lib {
   }
 
   template <typename T>
-  inline double PerpendicDistFromLineSqrd(const Point<T>& pt,
-    const Point<T>& line1, const Point<T>& line2)
-  {
-    double a = static_cast<double>(pt.x - line1.x);
-    double b = static_cast<double>(pt.y - line1.y);
-    double c = static_cast<double>(line2.x - line1.x);
-    double d = static_cast<double>(line2.y - line1.y);
-    if (c == 0 && d == 0) return 0;
-    return Sqr(a * d - c * b) / (c * c + d * d);
-  }
-
-  inline size_t GetNext(size_t current, size_t high, 
-    const std::vector<bool>& flags)
-  {
-    ++current;
-    while (current <= high && flags[current]) ++current;
-    if (current <= high) return current;
-    current = 0;
-    while (flags[current]) ++current;
-    return current;
-  }
-
-  inline size_t GetPrior(size_t current, size_t high, 
-    const std::vector<bool>& flags)
-  {
-    if (current == 0) current = high;
-    else --current;
-    while (current > 0 && flags[current]) --current;
-    if (!flags[current]) return current;
-    current = high;
-    while (flags[current]) --current;
-    return current;
-  }
-
-  template <typename T>
-  inline Path<T> SimplifyPath(const Path<T> path, 
+  inline Path<T> SimplifyPath(const Path<T> &path,
     double epsilon, bool isClosedPath = true)
   {
     const size_t len = path.size(), high = len -1;
@@ -662,13 +645,13 @@ namespace Clipper2Lib {
 
     std::vector<bool> flags(len);
     std::vector<double> distSqr(len);
-    size_t prior = high, curr = 0, start, next, prior2, next2;
+    size_t prior = high, curr = 0, start, next, prior2;
     if (isClosedPath)
     {
       distSqr[0] = PerpendicDistFromLineSqrd(path[0], path[high], path[1]);
       distSqr[high] = PerpendicDistFromLineSqrd(path[high], path[0], path[high - 1]);
     }
-    else 
+    else
     {
       distSqr[0] = MAX_DBL;
       distSqr[high] = MAX_DBL;
@@ -683,52 +666,80 @@ namespace Clipper2Lib {
         start = curr;
         do
         {
-          curr = GetNext(curr, high, flags);
+          curr = details::GetNext(curr, high, flags);
         } while (curr != start && distSqr[curr] > epsSqr);
         if (curr == start) break;
       }
-      
-      prior = GetPrior(curr, high, flags);
-      next = GetNext(curr, high, flags);
+
+      prior = details::GetPrior(curr, high, flags);
+      next = details::GetNext(curr, high, flags);
       if (next == prior) break;
 
+      // flag for removal the smaller of adjacent 'distances'
       if (distSqr[next] < distSqr[curr])
       {
-        flags[next] = true;
-        next = GetNext(next, high, flags);
-        next2 = GetNext(next, high, flags);
-        distSqr[curr] = PerpendicDistFromLineSqrd(path[curr], path[prior], path[next]);
-        if (next != high || isClosedPath)
-          distSqr[next] = PerpendicDistFromLineSqrd(path[next], path[curr], path[next2]);
+        prior2 = prior;
+        prior = curr;
         curr = next;
+        next = details::GetNext(next, high, flags);
       }
       else
-      {
-        flags[curr] = true;
-        curr = next;
-        next = GetNext(next, high, flags);
-        prior2 = GetPrior(prior, high, flags);
+        prior2 = details::GetPrior(prior, high, flags);
+
+      flags[curr] = true;
+      curr = next;
+      next = details::GetNext(next, high, flags);
+
+      if (isClosedPath || ((curr != high) && (curr != 0)))
         distSqr[curr] = PerpendicDistFromLineSqrd(path[curr], path[prior], path[next]);
-        if (prior != 0 || isClosedPath)
-          distSqr[prior] = PerpendicDistFromLineSqrd(path[prior], path[prior2], path[curr]);
-      }
+      if (isClosedPath || ((prior != 0) && (prior != high)))
+        distSqr[prior] = PerpendicDistFromLineSqrd(path[prior], path[prior2], path[curr]);
     }
     Path<T> result;
     result.reserve(len);
     for (typename Path<T>::size_type i = 0; i < len; ++i)
-      if (!flags[i]) result.push_back(path[i]);
+      if (!flags[i]) result.emplace_back(path[i]);
     return result;
   }
 
   template <typename T>
-  inline Paths<T> SimplifyPaths(const Paths<T> paths, 
+  inline Paths<T> SimplifyPaths(const Paths<T> &paths,
     double epsilon, bool isClosedPath = true)
   {
     Paths<T> result;
     result.reserve(paths.size());
     for (const auto& path : paths)
-      result.push_back(SimplifyPath(path, epsilon, isClosedPath));
+      result.emplace_back(std::move(SimplifyPath(path, epsilon, isClosedPath)));
     return result;
+  }
+
+ 
+  template <typename T>
+  inline bool Path2ContainsPath1(const Path<T>& path1, const Path<T>& path2)
+  {
+    // precondition: paths must not intersect, except for
+    // transient (and presumed 'micro') path intersections 
+    PointInPolygonResult pip = PointInPolygonResult::IsOn;
+    for (const Point<T>& pt : path1)
+    {
+      switch (PointInPolygon(pt, path2))
+      {
+      case PointInPolygonResult::IsOutside: 
+        if (pip == PointInPolygonResult::IsOutside) return false; 
+        pip = PointInPolygonResult::IsOutside; 
+        break;
+      case PointInPolygonResult::IsInside:
+        if (pip == PointInPolygonResult::IsInside) return true;
+        pip = PointInPolygonResult::IsInside;
+        break;
+      default: 
+        break;
+      }
+    }
+    if (pip != PointInPolygonResult::IsInside) return false;
+    // result is likely true but check midpoint
+    Point<T> mp1 = GetBounds(path1).MidPoint();
+    return PointInPolygon(mp1, path2) == PointInPolygonResult::IsInside;
   }
 
   template <typename T>
@@ -765,7 +776,7 @@ namespace Clipper2Lib {
     result.reserve(len);
     for (typename Path<T>::size_type i = 0; i < len; ++i)
       if (flags[i])
-        result.push_back(path[i]);
+        result.emplace_back(path[i]);
     return result;
   }
 

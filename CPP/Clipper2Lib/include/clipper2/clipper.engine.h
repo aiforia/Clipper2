@@ -1,27 +1,19 @@
 /*******************************************************************************
 * Author    :  Angus Johnson                                                   *
-* Date      :  6 October 2023                                                  *
-* Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2023                                         *
+* Date      :  17 September 2024                                               *
+* Website   :  https://www.angusj.com                                          *
+* Copyright :  Angus Johnson 2010-2024                                         *
 * Purpose   :  This is the main polygon clipping module                        *
-* License   :  http://www.boost.org/LICENSE_1_0.txt                            *
+* License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************/
 
 #ifndef CLIPPER_ENGINE_H
 #define CLIPPER_ENGINE_H
 
-constexpr auto CLIPPER2_VERSION = "1.2.3";
-
-#include <cstdlib>
-#include <stdint.h> //#541
-#include <iostream>
+#include "clipper2/clipper.core.h"
 #include <queue>
-#include <vector>
 #include <functional>
-#include <numeric>
 #include <memory>
-
-#include "clipper.core.h"
 
 namespace Clipper2Lib {
 
@@ -34,16 +26,16 @@ namespace Clipper2Lib {
 	struct HorzSegment;
 
 	//Note: all clipping operations except for Difference are commutative.
-	enum class ClipType { None, Intersection, Union, Difference, Xor };
-	
+	enum class ClipType { NoClip, Intersection, Union, Difference, Xor };
+
 	enum class PathType { Subject, Clip };
-	enum class JoinWith { None, Left, Right };
+	enum class JoinWith { NoJoin, Left, Right };
 
 	enum class VertexFlags : uint32_t {
-		None = 0, OpenStart = 1, OpenEnd = 2, LocalMax = 4, LocalMin = 8
+		Empty = 0, OpenStart = 1, OpenEnd = 2, LocalMax = 4, LocalMin = 8
 	};
 
-	constexpr enum VertexFlags operator &(enum VertexFlags a, enum VertexFlags b) 
+	constexpr enum VertexFlags operator &(enum VertexFlags a, enum VertexFlags b)
 	{
 		return (enum VertexFlags)(uint32_t(a) & uint32_t(b));
 	}
@@ -57,7 +49,7 @@ namespace Clipper2Lib {
 		Point64 pt;
 		Vertex* next = nullptr;
 		Vertex* prev = nullptr;
-		VertexFlags flags = VertexFlags::None;
+		VertexFlags flags = VertexFlags::Empty;
 	};
 
 	struct OutPt {
@@ -97,7 +89,7 @@ namespace Clipper2Lib {
 		Path64 path;
 		bool is_open = false;
 
-		~OutRec() { 
+		~OutRec() {
 			if (splits) delete splits;
 			// nb: don't delete the split pointers
 			// as these are owned by ClipperBase's outrec_list_
@@ -108,7 +100,7 @@ namespace Clipper2Lib {
 	//Important: UP and DOWN here are premised on Y-axis positive down
 	//displays, which is the orientation used in Clipper's development.
 	///////////////////////////////////////////////////////////////////
-	
+
 	struct Active {
 		Point64 bot;
 		Point64 top;
@@ -133,7 +125,7 @@ namespace Clipper2Lib {
 		Vertex* vertex_top = nullptr;
 		LocalMinima* local_min = nullptr;  // the bottom of an edge 'bound' (also Vatti)
 		bool is_left_bound = false;
-		JoinWith join_with = JoinWith::None;
+		JoinWith join_with = JoinWith::NoJoin;
 	};
 
 	struct LocalMinima {
@@ -169,7 +161,7 @@ namespace Clipper2Lib {
 	};
 
 #ifdef USINGZ
-		typedef std::function<void(const Point64& e1bot, const Point64& e1top,
+	typedef std::function<void(const Point64& e1bot, const Point64& e1top,
 		const Point64& e2bot, const Point64& e2top, Point64& pt)> ZCallback64;
 
 	typedef std::function<void(const PointD& e1bot, const PointD& e1top,
@@ -199,7 +191,7 @@ namespace Clipper2Lib {
 
 	class ClipperBase {
 	private:
-		ClipType cliptype_ = ClipType::None;
+		ClipType cliptype_ = ClipType::NoClip;
 		FillRule fillrule_ = FillRule::EvenOdd;
 		FillRule fillpos = FillRule::Positive;
 		int64_t bot_y_ = 0;
@@ -212,7 +204,7 @@ namespace Clipper2Lib {
 		std::vector<Vertex*> vertex_lists_;
 		std::priority_queue<int64_t> scanline_list_;
 		IntersectNodeList intersect_nodes_;
-    HorzSegmentList horz_seg_list_;
+        HorzSegmentList horz_seg_list_;
 		std::vector<HorzJoin> horz_join_list_;
 		void Reset();
 		inline void InsertScanline(int64_t y);
@@ -232,7 +224,7 @@ namespace Clipper2Lib {
 		inline bool PopHorz(Active *&e);
 		inline OutPt* StartOpenPath(Active &e, const Point64& pt);
 		inline void UpdateEdgeIntoAEL(Active *e);
-		OutPt* IntersectEdges(Active &e1, Active &e2, const Point64& pt);
+		void IntersectEdges(Active &e1, Active &e2, const Point64& pt);
 		inline void DeleteFromAEL(Active &e);
 		inline void AdjustCurrXAndCopyToSEL(const int64_t top_y);
 		void DoIntersections(const int64_t top_y);
@@ -242,7 +234,7 @@ namespace Clipper2Lib {
 		void SwapPositionsInAEL(Active& edge1, Active& edge2);
 		OutRec* NewOutRec();
 		OutPt* AddOutPt(const Active &e, const Point64& pt);
-		OutPt* AddLocalMinPoly(Active &e1, Active &e2, 
+		OutPt* AddLocalMinPoly(Active &e1, Active &e2,
 			const Point64& pt, bool is_new = false);
 		OutPt* AddLocalMaxPoly(Active &e1, Active &e2, const Point64& pt);
 		void DoHorizontal(Active &horz);
@@ -253,17 +245,19 @@ namespace Clipper2Lib {
 		void JoinOutrecPaths(Active &e1, Active &e2);
 		void FixSelfIntersects(OutRec* outrec);
 		void DoSplitOp(OutRec* outRec, OutPt* splitOp);
-		
+
 		inline void AddTrialHorzJoin(OutPt* op);
 		void ConvertHorzSegsToJoins();
 		void ProcessHorzJoins();
 
 		void Split(Active& e, const Point64& pt);
-		inline void CheckJoinLeft(Active& e, 
+		inline void CheckJoinLeft(Active& e,
 			const Point64& pt, bool check_curr_x = false);
 		inline void CheckJoinRight(Active& e,
 			const Point64& pt, bool check_curr_x = false);
 	protected:
+		bool preserve_collinear_ = true;
+		bool reverse_solution_ = false;
 		int error_code_ = 0;
 		bool has_open_paths_ = false;
 		bool succeeded_ = true;
@@ -282,9 +276,11 @@ namespace Clipper2Lib {
 		void AddPaths(const Paths64& paths, PathType polytype, bool is_open);
 	public:
 		virtual ~ClipperBase();
-		int ErrorCode() { return error_code_; };
-		bool PreserveCollinear = true;
-		bool ReverseSolution = false;
+		int ErrorCode() const { return error_code_; };
+		void PreserveCollinear(bool val) { preserve_collinear_ = val; };
+		bool PreserveCollinear() const { return preserve_collinear_;};
+		void ReverseSolution(bool val) { reverse_solution_ = val; };
+		bool ReverseSolution() const { return reverse_solution_; };
 		void Clear();
 		void AddReuseableData(const ReuseableDataContainer64& reuseable_data);
 #ifdef USINGZ
@@ -324,12 +320,12 @@ namespace Clipper2Lib {
 
 		const PolyPath* Parent() const { return parent_; }
 
-		bool IsHole() const 
+		bool IsHole() const
 		{
 			unsigned lvl = Level();
 			//Even levels except level 0
 			return lvl && !(lvl & 1);
-		}		
+		}
 	};
 
 	typedef typename std::vector<std::unique_ptr<PolyPath64>> PolyPath64List;
@@ -341,17 +337,18 @@ namespace Clipper2Lib {
 		Path64 polygon_;
 	public:
 		explicit PolyPath64(PolyPath64* parent = nullptr) : PolyPath(parent) {}
+		explicit PolyPath64(PolyPath64* parent, const Path64& path) : PolyPath(parent) { polygon_ = path; }
 
 		~PolyPath64() {
 			childs_.resize(0);
 		}
 
-		const PolyPath64* operator [] (size_t index) const
-		{ 
+		PolyPath64* operator [] (size_t index) const
+		{
 			return childs_[index].get(); //std::unique_ptr
-		} 
+		}
 
-		const PolyPath64* Child(size_t index) const
+		PolyPath64* Child(size_t index) const
 		{
 			return childs_[index].get();
 		}
@@ -361,10 +358,7 @@ namespace Clipper2Lib {
 
 		PolyPath64* AddChild(const Path64& path) override
 		{
-			auto p = std::make_unique<PolyPath64>(this);
-			auto* result = childs_.emplace_back(std::move(p)).get();
-			result->polygon_ = path;
-			return result;
+			return childs_.emplace_back(std::make_unique<PolyPath64>(this, path)).get();
 		}
 
 		void Clear() override
@@ -399,16 +393,29 @@ namespace Clipper2Lib {
 			scale_ = parent ? parent->scale_ : 1.0;
 		}
 
+		explicit PolyPathD(PolyPathD* parent, const Path64& path) : PolyPath(parent)
+		{
+			scale_ = parent ? parent->scale_ : 1.0;
+			int error_code = 0;
+			polygon_ = ScalePath<double, int64_t>(path, scale_, error_code);
+		}
+
+		explicit PolyPathD(PolyPathD* parent, const PathD& path) : PolyPath(parent)
+		{
+			scale_ = parent ? parent->scale_ : 1.0;
+			polygon_ = path;
+		}
+
 		~PolyPathD() {
 			childs_.resize(0);
 		}
 
-		const PolyPathD* operator [] (size_t index) const
-		{ 
+		PolyPathD* operator [] (size_t index) const
+		{
 			return childs_[index].get();
 		}
 
-		const PolyPathD* Child(size_t index) const
+		PolyPathD* Child(size_t index) const
 		{
 			return childs_[index].get();
 		}
@@ -417,14 +424,16 @@ namespace Clipper2Lib {
 		PolyPathDList::const_iterator end() const { return childs_.cend(); }
 
 		void SetScale(double value) { scale_ = value; }
-		double Scale() { return scale_; }
+		double Scale() const { return scale_; }
+
 		PolyPathD* AddChild(const Path64& path) override
 		{
-			int error_code = 0;
-			auto p = std::make_unique<PolyPathD>(this);
-			PolyPathD* result = childs_.emplace_back(std::move(p)).get();
-			result->polygon_ = ScalePath<double, int64_t>(path, scale_, error_code);
-			return result;
+			return childs_.emplace_back(std::make_unique<PolyPathD>(this, path)).get();
+		}
+
+		PolyPathD* AddChild(const PathD& path)
+		{
+			return childs_.emplace_back(std::make_unique<PolyPathD>(this, path)).get();
 		}
 
 		void Clear() override
@@ -477,7 +486,7 @@ namespace Clipper2Lib {
 			return Execute(clip_type, fill_rule, closed_paths, dummy);
 		}
 
-		bool Execute(ClipType clip_type, FillRule fill_rule, 
+		bool Execute(ClipType clip_type, FillRule fill_rule,
 			Paths64& closed_paths, Paths64& open_paths)
 		{
 			closed_paths.clear();
@@ -519,7 +528,7 @@ namespace Clipper2Lib {
 	public:
 		explicit ClipperD(int precision = 2) : ClipperBase()
 		{
-			CheckPrecision(precision, error_code_);
+			CheckPrecisionRange(precision, error_code_);
 			// to optimize scaling / descaling precision
 			// set the scale to a power of double's radix (2) (#25)
 			scale_ = std::pow(std::numeric_limits<double>::radix,
@@ -549,12 +558,12 @@ namespace Clipper2Lib {
 		void CheckCallback()
 		{
 			if(zCallbackD_)
-				// if the user defined float point callback has been assigned 
+				// if the user defined float point callback has been assigned
 				// then assign the proxy callback function
-				ClipperBase::zCallback_ = 
+				ClipperBase::zCallback_ =
 					std::bind(&ClipperD::ZCB, this, std::placeholders::_1,
 					std::placeholders::_2, std::placeholders::_3,
-					std::placeholders::_4, std::placeholders::_5); 
+					std::placeholders::_4, std::placeholders::_5);
 			else
 				ClipperBase::zCallback_ = nullptr;
 		}
@@ -621,6 +630,6 @@ namespace Clipper2Lib {
 
 	};
 
-}  // namespace 
+}  // namespace
 
 #endif  // CLIPPER_ENGINE_H

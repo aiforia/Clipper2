@@ -1,18 +1,131 @@
 ﻿/*******************************************************************************
 * Author    :  Angus Johnson                                                   *
-* Date      :  16 September 2022                                               *
-* Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2022                                         *
-* License   :  http://www.boost.org/LICENSE_1_0.txt                            *
+* Date      :  16 December 2025                                                *
+* Website   :  https://www.angusj.com                                          *
+* Copyright :  Angus Johnson 2010-2025                                         *
+* License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************/
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 
+#if USINGZ
+namespace Clipper2ZLib
+#else
 namespace Clipper2Lib
+#endif
 {
+
+  ////////////////////////////////////////////////////////////////////////////
+  // SvgReader
+  ////////////////////////////////////////////////////////////////////////////
+  public class SvgReader
+  {
+    private readonly PathsD pp = new PathsD();
+
+    private bool SkipBlanks(string xml, ref int i, int endI)
+    {
+      while (i < endI && xml[i] <= ' ') i++;
+      return i < endI;
+    }
+
+    private bool SkipOptionalComma(string xml, ref int i, int endI)
+    {
+      while (i < endI && xml[i] <= ' ') i++;
+      if (i < endI && xml[i] == ',') i++;
+      else return (i < endI);
+      while (i < endI && xml[i] <= ' ') i++;
+      return i < endI;
+    }
+
+    private bool GetNum(string xml, ref int i, int endI, out double val)
+    {
+      while (i < endI && xml[i] <= ' ') i++;
+      bool isneg = xml[i] == '-';
+      if (isneg) i++;
+      int startI = i;
+      val = 0;
+      int scale = 1;
+      while (xml[i] >= '0' & xml[i] <= '9')
+      {
+        val = val * 10 + (xml[i++] - 48);
+      }
+      if (xml[i] == '.')
+      {
+        i++;
+        while (xml[i] >= '0' & xml[i] <= '9')
+        {
+          val = val * 10 + (xml[i++] - 48);
+          scale *= 10;
+        }
+      }
+      if (i == startI) return false;
+      val /= scale;
+      if (isneg) val = -val;
+      return true;
+    }
+
+    public SvgReader(string filename)
+    {
+      if (!File.Exists(filename)) return;
+      StreamReader sr = new StreamReader(filename);
+      string xml = sr.ReadToEnd();
+      sr.Close();
+      int i = xml.IndexOf("path d=\"M");
+      if (i <= 0) return;
+      i += 9;
+      int endI = xml.Length;
+      if (!SkipBlanks(xml, ref i, endI)) return;
+      
+      PathD p = new PathD();  
+
+      PointD m = new PointD();
+      double x = 0, y = 0;
+      GetNum(xml, ref i, endI, out m.x);
+      SkipOptionalComma(xml, ref i, endI);
+      if (!GetNum(xml, ref i, endI, out m.y)) return;
+      p.Add(m);
+      while (i < endI)
+      {
+        if (!SkipBlanks(xml, ref i, endI)) break;
+        if (xml[i] == 'L') i++;
+        else if (xml[i] == 'Z' || xml[i] == 'M')
+        {
+          if (p.Count > 2) pp.Add(p);
+          p = new PathD();
+          if (xml[i] == 'Z')
+          {
+            // start next path
+            i++;
+            if (!SkipBlanks(xml, ref i, endI)) break;
+          }
+          if (xml[i] == 'M')
+          {
+            i++;
+            if (!GetNum(xml, ref i, endI, out x)) return;
+            SkipOptionalComma(xml, ref i, endI);
+            if (!GetNum(xml, ref i, endI, out y)) return;
+          }
+          p.Add(new PointD(x, y));
+          continue;
+        }
+        GetNum(xml, ref i, endI, out x);
+        SkipOptionalComma(xml, ref i, endI);
+        if (!GetNum(xml, ref i, endI, out y)) break;
+        SkipOptionalComma(xml, ref i, endI);
+        p.Add(new PointD(x, y));
+      }
+      if (p.Count > 2) pp.Add(p);
+    }
+    public PathsD Paths => pp;
+  };
+
+  ////////////////////////////////////////////////////////////////////////////
+  // SvgWriter
+  ////////////////////////////////////////////////////////////////////////////
   public class SvgWriter
   {
     public const uint black = 0xFF000000;
@@ -56,9 +169,9 @@ namespace Clipper2Lib
       public readonly string text;
       public readonly int fontSize;
       public readonly uint fontColor;
-      public readonly int posX;
-      public readonly int posY;
-      public TextInfo(string text, int x, int y,
+      public readonly double posX;
+      public readonly double posY;
+      public TextInfo(string text, double x, double y,
         int fontsize = 12, uint fontcolor = black)
       {
         this.text = text;
@@ -128,16 +241,14 @@ namespace Clipper2Lib
     public void AddClosedPath(Path64 path, uint brushColor,
       uint penColor, double penWidth, bool showCoords = false)
     {
-      Paths64 tmp = new Paths64();
-      tmp.Add(path);
+      Paths64 tmp = new Paths64 { path };
       AddClosedPaths(tmp, brushColor, penColor, penWidth, showCoords);
     }
 
     public void AddClosedPath(PathD path, uint brushColor,
       uint penColor, double penWidth, bool showCoords = false)
     {
-      PathsD tmp = new PathsD();
-      tmp.Add(path);
+      PathsD tmp = new PathsD { path };
       AddClosedPaths(tmp, brushColor, penColor, penWidth, showCoords);
     }
 
@@ -160,16 +271,14 @@ namespace Clipper2Lib
     public void AddOpenPath(Path64 path,  uint penColor, 
       double penWidth, bool showCoords = false)
     {
-      Paths64 tmp = new Paths64();
-      tmp.Add(path);
+      Paths64 tmp = new Paths64 { path };
       AddOpenPaths(tmp, penColor, penWidth, showCoords);
     }
 
     public void AddOpenPath(PathD path, uint penColor, 
       double penWidth, bool showCoords = false)
     {
-      PathsD tmp = new PathsD();
-      tmp.Add(path);
+      PathsD tmp = new PathsD { path };
       AddOpenPaths(tmp, penColor, penWidth, showCoords);
     }
 
@@ -189,8 +298,7 @@ namespace Clipper2Lib
         0x0, penColor, penWidth, showCoords, true));
     }
 
-
-    public void AddText(string cap, int posX, int posY, int fontSize, uint fontClr = black)
+    public void AddText(string cap, double posX, double posY, int fontSize, uint fontClr = black)
     {
       textInfos.Add(new TextInfo(cap, posX, posY, fontSize, fontClr));
     }
@@ -207,9 +315,7 @@ namespace Clipper2Lib
             if (pt.y < bounds.top) bounds.top = pt.y;
             if (pt.y > bounds.bottom) bounds.bottom = pt.y;
           }
-      if (!IsValidRect(bounds))
-        return RectEmpty;
-      return bounds;
+      return !IsValidRect(bounds) ? RectEmpty : bounds;
     }
 
     private static string ColorToHtml(uint clr)
@@ -281,19 +387,20 @@ namespace Clipper2Lib
           writer.Write(string.Format(NumberFormatInfo.InvariantInfo, svg_path_format2,
               ColorToHtml(pi.PenClr), GetAlpha(pi.PenClr), pi.PenWidth));
 
-        if (pi.ShowCoords)
+        if (!pi.ShowCoords) continue;
         {
-          writer.Write("<g font-family=\"{0}\" font-size=\"{1}\" fill=\"{2}\">\n", coordStyle.FontName, coordStyle.FontSize, ColorToHtml(coordStyle.FontColor));
+          writer.Write("<g font-family=\"{0}\" font-size=\"{1}\" fill=\"{2}\">\n", 
+            coordStyle.FontName, coordStyle.FontSize, ColorToHtml(coordStyle.FontColor));
           foreach (PathD path in pi.paths)
           {
             foreach (PointD pt in path)
             {
 #if USINGZ
-              writer.Write(string.Format(
-                  "<text x=\"{0}\" y=\"{1}\">{2},{3},{4}</text>\n",
-                  (int)(pt.x * scale + offsetX), (int)(pt.y * scale + offsetY), pt.x, pt.y, pt.z));
+              writer.Write("<text x=\"{0:f2}\" y=\"{1:f2}\">{2:f2},{3:f2},{4}</text>\n", 
+                (pt.x * scale + offsetX), (pt.y * scale + offsetY), pt.x, pt.y, pt.z);
 #else
-              writer.Write("<text x=\"{0:f2}\" y=\"{1:f2}\">{2},{3}</text>\n", (pt.x * scale + offsetX), (pt.y * scale + offsetY), pt.x, pt.y);
+              writer.Write("<text x=\"{0:f2}\" y=\"{1:f2}\">{2:f2},{3:f2}</text>\n", 
+                (pt.x * scale + offsetX), (pt.y * scale + offsetY), pt.x, pt.y);
 #endif
             }
           }
@@ -304,8 +411,10 @@ namespace Clipper2Lib
       foreach (TextInfo captionInfo in textInfos)
       {
         writer.Write("<g font-family=\"Verdana\" font-style=\"normal\" " +
-                     "font-weight=\"normal\" font-size=\"{0}\" fill=\"{1}\">\n", captionInfo.fontSize, ColorToHtml(captionInfo.fontColor));
-        writer.Write("<text x=\"{0}\" y=\"{1}\">{2}</text>\n</g>\n", captionInfo.posX * scale + offsetX, captionInfo.posY * scale + offsetX, captionInfo.text);
+                     "font-weight=\"normal\" font-size=\"{0}\" fill=\"{1}\">\n", 
+                     captionInfo.fontSize, ColorToHtml(captionInfo.fontColor));
+        writer.Write("<text x=\"{0:f2}\" y=\"{1:f2}\">{2}</text>\n</g>\n", 
+          captionInfo.posX * scale + offsetX, captionInfo.posY * scale + offsetY, captionInfo.text);
       }
 
       writer.Write("</svg>\n");

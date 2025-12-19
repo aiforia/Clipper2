@@ -6,14 +6,12 @@ jobs:
   windows-latest:
     runs-on: 'windows-latest'
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v2
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: '16'
-    - name: Get GoogleTest
-      run: git submodule update --init
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1.0.2      
+      uses: microsoft/setup-msbuild@v2
     - name: Build
       run: |
         mkdir CPP/build
@@ -27,12 +25,10 @@ jobs:
   ubuntu-latest-gcc-default:
     runs-on: 'ubuntu-latest'
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v2
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: '16'
-    - name: Get GoogleTest
-      run: git submodule update --init
     - name: Build
       run: |
         mkdir CPP/build
@@ -46,12 +42,10 @@ jobs:
   ubuntu-latest-gcc-11:
     runs-on: 'ubuntu-latest'
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v2
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: '16'
-    - name: Get GoogleTest
-      run: git submodule update --init
     - name: Install gcc 11
       run: |
         sudo apt update
@@ -70,12 +64,10 @@ jobs:
   ubuntu-latest-clang-default:
     runs-on: 'ubuntu-latest'
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v2
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: '16'
-    - name: Get GoogleTest
-      run: git submodule update --init
     - name: Build
       run: |
         export CC=/usr/bin/clang
@@ -88,24 +80,22 @@ jobs:
       run: |
         cd CPP/build
         env CTEST_OUTPUT_ON_FAILURE=1 make test
-  ubuntu-latest-clang-13:
+  ubuntu-latest-clang-17:
     runs-on: 'ubuntu-latest'
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v2
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: '16'
-    - name: Get GoogleTest
-      run: git submodule update --init
-    - name: Install clang 13
+    - name: Install clang 17
       run: |
         wget https://apt.llvm.org/llvm.sh
         chmod +x llvm.sh
-        sudo ./llvm.sh 13
+        sudo ./llvm.sh 17
     - name: Build
       run: |
-        export CC=/usr/bin/clang-13
-        export CXX=/usr/bin/clang++-13
+        export CC=/usr/bin/clang-17
+        export CXX=/usr/bin/clang++-17
         mkdir CPP/build
         cd CPP/build
         cmake .. -DCLIPPER2_TESTS=ON
@@ -117,12 +107,10 @@ jobs:
   macos-latest:
     runs-on: 'macos-latest'
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v2
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: '16'
-    - name: Get GoogleTest
-      run: git submodule update --init
     - name: Build
       run: |
         mkdir CPP/build

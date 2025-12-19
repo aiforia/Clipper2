@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(Clipper2 VERSION 1.2.3 LANGUAGES C CXX)
+project(Clipper2 VERSION 2.0.0 LANGUAGES C CXX)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 if(NOT DEFINED CMAKE_CXX_STANDARD OR CMAKE_CXX_STANDARD LESS 17)
@@ -9,30 +9,53 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+##########################################################################
+##########################################################################
+
+# CLIPPER2_HI_PRECISION: See GetIntersectPoint() in clipper.core.h 
+option(CLIPPER2_HI_PRECISION "Caution: enabling this will compromise performance" OFF)
 option(CLIPPER2_UTILS "Build utilities" ON)
 option(CLIPPER2_EXAMPLES "Build examples" ON)
 option(CLIPPER2_TESTS "Build tests" ON)
 option(USE_EXTERNAL_GTEST "Use system-wide installed GoogleTest" OFF)
-option(USE_EXTERNAL_GBENCHMARK "Use the googlebenchmark" OFF) 
+option(USE_EXTERNAL_GBENCHMARK "Use the googlebenchmark" OFF)
 option(BUILD_SHARED_LIBS "Build shared libs" OFF)
 set(CLIPPER2_USINGZ "ON" CACHE STRING "Build Clipper2Z, either \"ON\" or \"OFF\" or \"ONLY\"")
+# CLIPPER2_MAX_DECIMAL_PRECISION: maximum decimal precision when scaling PathsD to Paths64.
+# Caution: excessive scaling will increase the likelihood of integer overflow errors.
+# See https://www.angusj.com/clipper2/Docs/Overview.htm#coord_range for more info.
+set(CLIPPER2_MAX_DECIMAL_PRECISION 8 CACHE STRING "Maximum decimal precision range")
+
+##########################################################################
+##########################################################################
+
+
+if (APPLE)
+    set(CMAKE_SHARED_LIBRARY_SUFFIX ".dylib")
+endif ()
 
 include(GNUInstallDirs)
+set(CLIPPER2_INC_FOLDER ${PROJECT_SOURCE_DIR}/Clipper2Lib/include/clipper2)
+configure_file(clipper.version.in 
+  ${CLIPPER2_INC_FOLDER}/clipper.version.h NEWLINE_STYLE UNIX)
 
 set(CLIPPER2_INC
-  Clipper2Lib/include/clipper2/clipper.h
-  Clipper2Lib/include/clipper2/clipper.core.h
-  Clipper2Lib/include/clipper2/clipper.engine.h
-  Clipper2Lib/include/clipper2/clipper.export.h
-  Clipper2Lib/include/clipper2/clipper.minkowski.h
-  Clipper2Lib/include/clipper2/clipper.offset.h
-  Clipper2Lib/include/clipper2/clipper.rectclip.h
+  ${CLIPPER2_INC_FOLDER}/clipper.h
+  ${CLIPPER2_INC_FOLDER}/clipper.version.h
+  ${CLIPPER2_INC_FOLDER}/clipper.core.h
+  ${CLIPPER2_INC_FOLDER}/clipper.engine.h
+  ${CLIPPER2_INC_FOLDER}/clipper.export.h
+  ${CLIPPER2_INC_FOLDER}/clipper.minkowski.h
+  ${CLIPPER2_INC_FOLDER}/clipper.offset.h
+  ${CLIPPER2_INC_FOLDER}/clipper.rectclip.h
+  ${CLIPPER2_INC_FOLDER}/clipper.triangulation.h
 )
 
 set(CLIPPER2_SRC
   Clipper2Lib/src/clipper.engine.cpp
   Clipper2Lib/src/clipper.offset.cpp
   Clipper2Lib/src/clipper.rectclip.cpp
+  Clipper2Lib/src/clipper.triangulation.cpp
 )
 
 set(CLIPPER2_LIBS "") # one or both of Clipper2/Clipper2Z
@@ -42,8 +65,16 @@ if (NOT (CLIPPER2_USINGZ STREQUAL "ONLY"))
   list(APPEND CLIPPER2_LIBS Clipper2)
   add_library(Clipper2 ${CLIPPER2_INC} ${CLIPPER2_SRC})
 
-  target_include_directories(Clipper2
-    PUBLIC Clipper2Lib/include
+  target_compile_definitions(
+    Clipper2 PUBLIC
+      CLIPPER2_MAX_DECIMAL_PRECISION=${CLIPPER2_MAX_DECIMAL_PRECISION}
+      $<$<BOOL:${CLIPPER2_HI_PRECISION}>:CLIPPER2_HI_PRECISION>
+  )
+
+  target_include_directories(
+    Clipper2 PUBLIC 
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Clipper2Lib/include>
+      $<INSTALL_INTERFACE:include>
   )
 
   if (MSVC)
@@ -59,10 +90,16 @@ if (NOT (CLIPPER2_USINGZ STREQUAL "OFF"))
   list(APPEND CLIPPER2_LIBS Clipper2Z)
   add_library(Clipper2Z ${CLIPPER2_INC} ${CLIPPER2_SRC})
 
-  target_compile_definitions(Clipper2Z PUBLIC USINGZ)
-
-  target_include_directories(Clipper2Z
-    PUBLIC Clipper2Lib/include
+  target_compile_definitions(
+    Clipper2Z PUBLIC
+      USINGZ
+      CLIPPER2_MAX_DECIMAL_PRECISION=${CLIPPER2_MAX_DECIMAL_PRECISION}
+      $<$<BOOL:${CLIPPER2_HI_PRECISION}>:CLIPPER2_HI_PRECISION>
+  )
+  target_include_directories(
+    Clipper2Z PUBLIC 
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Clipper2Lib/include>
+      $<INSTALL_INTERFACE:include>
   )
 
   if (MSVC)
@@ -100,9 +137,6 @@ if(CLIPPER2_UTILS OR CLIPPER2_TESTS OR CLIPPER2_EXAMPLES)
     add_library(Clipper2utils STATIC ${CLIPPER2_UTILS_INC} ${CLIPPER2_UTILS_SRC})
 
     target_link_libraries(Clipper2utils PUBLIC Clipper2)
-    target_include_directories(Clipper2utils
-      PUBLIC Utils
-    )
   endif()
 
   if (NOT (CLIPPER2_USINGZ STREQUAL "OFF"))
@@ -110,9 +144,6 @@ if(CLIPPER2_UTILS OR CLIPPER2_TESTS OR CLIPPER2_EXAMPLES)
     add_library(Clipper2Zutils STATIC ${CLIPPER2_UTILS_INC} ${CLIPPER2_UTILS_SRC})
 
     target_link_libraries(Clipper2Zutils PUBLIC Clipper2Z)
-    target_include_directories(Clipper2Zutils
-      PUBLIC Utils
-    )
   endif()
 
   set_target_properties(${CLIPPER2_UTILS} PROPERTIES FOLDER Libraries)
@@ -121,6 +152,25 @@ if(CLIPPER2_UTILS OR CLIPPER2_TESTS OR CLIPPER2_EXAMPLES)
       target_compile_options(${lib} PRIVATE -Wno-unused-variable -Wno-unused-function)
     endforeach()
   endif()
+
+  # install utils/zutils module
+  foreach(lib ${CLIPPER2_UTILS})
+    set_target_properties(${lib} PROPERTIES
+          PUBLIC_HEADER "${CLIPPER2_UTILS_INC}"
+    )
+    target_include_directories(${lib}
+      PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Utils>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/clipper2/Utils>
+    )
+#    install(TARGETS ${lib}
+#            EXPORT  Clipper2-targets
+#            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/clipper2/Utils
+#            ARCHIVE       DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#            LIBRARY       DESTINATION ${CMAKE_INSTALL_LIBDIR}
+#            RUNTIME       DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endforeach()
+
 endif()
 
 if(CLIPPER2_EXAMPLES)
@@ -140,6 +190,7 @@ if(CLIPPER2_EXAMPLES)
       RectClipping
       SimpleClipping
       VariableOffset
+      Triangulation
     )
 
     foreach(ex ${EXAMPLES})
@@ -148,6 +199,8 @@ if(CLIPPER2_EXAMPLES)
     endforeach()
 
     file(COPY Examples/Inflate/rabbit.svg DESTINATION ${CMAKE_BINARY_DIR} FILE_PERMISSIONS OWNER_READ GROUP_READ WORLD_READ )
+    file(COPY Examples/Triangulation/TriSamples DESTINATION ${CMAKE_BINARY_DIR} FILE_PERMISSIONS OWNER_READ GROUP_READ WORLD_READ )
+
     list(APPEND ALL_EXAMPLES ${EXAMPLES})
   endif()
 
@@ -176,15 +229,30 @@ if(CLIPPER2_TESTS)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   endif()
   set(BUILD_GMOCK OFF)
-if(USE_EXTERNAL_GTEST)
-  find_package(GTest REQUIRED)
-else()
-  include(GoogleTest)
+  
+  if(USE_EXTERNAL_GTEST)
+    find_package(GTest REQUIRED)
+  else()
+    include(GoogleTest)
+    if(NOT EXISTS ${PROJECT_SOURCE_DIR}/Tests/googletest)
+      execute_process(
+        COMMAND "git" "clone" "https://github.com/google/googletest"
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/Tests
+      )
+    endif()
+    add_subdirectory("${PROJECT_SOURCE_DIR}/Tests/googletest/")
+    set_target_properties(gtest gtest_main PROPERTIES FOLDER GTest)
+  endif()
 
-  add_subdirectory("${PROJECT_SOURCE_DIR}/Tests/googletest/")
-  set_target_properties(gtest gtest_main PROPERTIES FOLDER GTest)
-endif()
+  if(TARGET gtest AND TARGET gtest_main)
+    set(gtest_libs gtest gtest_main)
+  elseif(TARGET GTest::gtest AND TARGET GTest::gtest_main)
+    set(gtest_libs GTest::gtest GTest::gtest_main)
+  endif()
+
   set(ClipperTests_SRC
+    Tests/TestExportHeaders.cpp
+    Tests/TestIsCollinear.cpp
     Tests/TestLines.cpp
     Tests/TestOffsets.cpp
     Tests/TestOffsetOrientation.cpp
@@ -195,6 +263,7 @@ endif()
     Tests/TestPolytreeUnion.cpp
     Tests/TestRandomPaths.cpp
     Tests/TestRectClip.cpp
+    Tests/TestSimplifyPath.cpp
     Tests/TestTrimCollinear.cpp
     Tests/TestWindows.cpp
   )
@@ -204,7 +273,7 @@ endif()
   if (NOT (CLIPPER2_USINGZ STREQUAL "ONLY"))
     list(APPEND CLIPPER2_TESTS "ClipperTests")
     add_executable(ClipperTests ${ClipperTests_SRC})
-    target_link_libraries(ClipperTests gtest gtest_main Clipper2 Clipper2utils)
+    target_link_libraries(ClipperTests ${gtest_libs} Clipper2 Clipper2utils)
 
     gtest_discover_tests(ClipperTests
       # set a working directory to your project root so that you can find test data via paths relative to the project root
@@ -216,7 +285,7 @@ endif()
   if (NOT (CLIPPER2_USINGZ STREQUAL "OFF"))
     list(APPEND CLIPPER2_TESTS "ClipperTestsZ")
     add_executable(ClipperTestsZ ${ClipperTests_SRC})
-    target_link_libraries(ClipperTestsZ gtest gtest_main Clipper2Z Clipper2Zutils)
+    target_link_libraries(ClipperTestsZ ${gtest_libs} Clipper2Z Clipper2Zutils)
 
     gtest_discover_tests(ClipperTestsZ
       # set a working directory so your project root so that you can find test data via paths relative to the project root
@@ -238,6 +307,7 @@ endif()
   file(COPY ../Tests/PolytreeHoleOwner2.txt DESTINATION ${CMAKE_BINARY_DIR} FILE_PERMISSIONS OWNER_READ GROUP_READ WORLD_READ )
   file(COPY ../Tests/Lines.txt DESTINATION ${CMAKE_BINARY_DIR} FILE_PERMISSIONS OWNER_READ GROUP_READ WORLD_READ )
   file(COPY ../Tests/Polygons.txt DESTINATION ${CMAKE_BINARY_DIR} FILE_PERMISSIONS OWNER_READ GROUP_READ WORLD_READ )
+  file(COPY ../Tests/Offsets.txt DESTINATION ${CMAKE_BINARY_DIR} FILE_PERMISSIONS OWNER_READ GROUP_READ WORLD_READ )
 endif()
 
 if(USE_EXTERNAL_GBENCHMARK)
@@ -248,13 +318,59 @@ set(CLIPPER2_PCFILES "")
 foreach(lib ${CLIPPER2_LIBS})
   set(pc "${CMAKE_CURRENT_BINARY_DIR}/${lib}.pc")
   list(APPEND CLIPPER2_PCFILES ${pc})
-  CONFIGURE_FILE(Clipper2.pc.cmakein "${pc}" @ONLY)
+  if (lib STREQUAL "Clipper2Z")
+    set(PCFILE_LIB_SUFFIX "Z")
+  else()
+    set(PCFILE_LIB_SUFFIX "")
+  endif()
+  configure_file(Clipper2.pc.cmakein "${pc}" @ONLY)
 endforeach()
 
 install(TARGETS ${CLIPPER2_LIBS}
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/clipper2
 )
 install(FILES ${CLIPPER2_PCFILES} DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
+
+# create package config file
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+
+write_basic_package_version_file("${PROJECT_BINARY_DIR}/Clipper2ConfigVersion.cmake" COMPATIBILITY SameMajorVersion)
+
+configure_package_config_file(
+    "Clipper2Config.cmake.in" 
+    "${PROJECT_BINARY_DIR}/Clipper2Config.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/clipper2
+)
+
+export(TARGETS ${CLIPPER2_LIBS} FILE "${PROJECT_BINARY_DIR}/Clipper2Targets.cmake")
+
+# installation
+install(TARGETS ${CLIPPER2_LIBS} EXPORT Clipper2-targets
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/clipper2
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(
+    FILES 
+        ${PROJECT_BINARY_DIR}/Clipper2Config.cmake 
+        ${PROJECT_BINARY_DIR}/Clipper2ConfigVersion.cmake 
+    DESTINATION 
+        ${CMAKE_INSTALL_LIBDIR}/cmake/clipper2
+)
+
+install(
+    EXPORT 
+        Clipper2-targets
+    NAMESPACE 
+        Clipper2::
+    FILE 
+        Clipper2Targets.cmake 
+    DESTINATION 
+        ${CMAKE_INSTALL_LIBDIR}/cmake/clipper2
+)
+
 
 # disable exceptions
 #string(REGEX REPLACE "/W[3|4]" "/w" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")

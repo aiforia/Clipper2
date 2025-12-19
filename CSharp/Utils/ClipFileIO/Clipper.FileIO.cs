@@ -1,36 +1,39 @@
 ﻿/*******************************************************************************
 * Author    :  Angus Johnson                                                   *
 * Date      :  16 September 2022                                               *
-* Website   :  http://www.angusj.com                                           *
+* Website   :  https://www.angusj.com                                          *
 * Copyright :  Angus Johnson 2010-2022                                         *
-* License   :  http://www.boost.org/LICENSE_1_0.txt                            *
+* License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************/
 
 using System;
 using System.IO;
 using System.Diagnostics;
 
+#if USINGZ
+namespace Clipper2ZLib
+#else
 namespace Clipper2Lib
+#endif
 {
 
   public static class ClipperFileIO
   {
-    public static Paths64 PathFromStr(string s)
+    public static Paths64 PathFromStr(string? s)
     {
       if (s == null) return new Paths64();
       Path64 p = new Path64();
       Paths64 pp = new Paths64();
-      int len = s.Length, i = 0, j;
+      int len = s.Length, i = 0;
       while (i < len)
       {
-        bool isNeg;
         while (s[i] < 33 && i < len) i++;
         if (i >= len) break;
         //get X ...
-        isNeg = s[i] == 45;
+        bool isNeg = s[i] == 45;
         if (isNeg) i++;
         if (i >= len || s[i] < 48 || s[i] > 57) break;
-        j = i + 1;
+        int j = i + 1;
         while (j < len && s[j] > 47 && s[j] < 58) j++;
         if (!long.TryParse(s.Substring(i, j - i), out long x)) break;
         if (isNeg) x = -x;
@@ -71,7 +74,7 @@ namespace Clipper2Lib
     //------------------------------------------------------------------------------
 
     public static bool LoadTestNum(string filename, int num,
-      Paths64 subj, Paths64 subj_open, Paths64 clip,
+      Paths64? subj, Paths64? subj_open, Paths64? clip,
       out ClipType ct, out FillRule fillRule, out long area, out int count, out string caption)
     {
       if (subj == null) subj = new Paths64(); else subj.Clear();
@@ -80,7 +83,6 @@ namespace Clipper2Lib
       ct = ClipType.Intersection;
       fillRule = FillRule.EvenOdd;
       bool result = false;
-      int GetIdx;
       if (num < 1) num = 1;
       caption = "";
       area = 0;
@@ -96,7 +98,7 @@ namespace Clipper2Lib
       }
       while (true)
       {
-        string s = reader.ReadLine();
+        string? s = reader.ReadLine();
         if (s == null) break;
         
         if (s.IndexOf("CAPTION: ", StringComparison.Ordinal) == 0)
@@ -141,6 +143,7 @@ namespace Clipper2Lib
           continue;
         }
 
+        int GetIdx;
         if (s.IndexOf("SUBJECTS_OPEN", StringComparison.Ordinal) == 0) GetIdx = 2;
         else if (s.IndexOf("SUBJECTS", StringComparison.Ordinal) == 0) GetIdx = 1;
         else if (s.IndexOf("CLIPS", StringComparison.Ordinal) == 0) GetIdx = 3;
@@ -150,7 +153,7 @@ namespace Clipper2Lib
         {
           s = reader.ReadLine();
           if (s == null) break;
-          Paths64 paths = PathFromStr(s); //0 or 1 path
+          Paths64? paths = PathFromStr(s); //0 or 1 path
           if (paths == null || paths.Count == 0)
           {
             if (GetIdx == 3) return result;
@@ -159,17 +162,26 @@ namespace Clipper2Lib
             else return result;
             continue;
           }
-          if (GetIdx == 1) subj.Add(paths[0]);
-          else if (GetIdx == 2) subj_open.Add(paths[0]);
-          else clip.Add(paths[0]);
+          switch (GetIdx)
+          {
+            case 1:
+              subj.Add(paths[0]);
+              break;
+            case 2:
+              subj_open.Add(paths[0]);
+              break;
+            default:
+              clip.Add(paths[0]);
+              break;
+          }
         }
       }
       return result;
     }
     //-----------------------------------------------------------------------
 
-    public static void SaveClippingOp(string filename, Paths64 subj,
-      Paths64 subj_open, Paths64 clip, ClipType ct, FillRule fillRule, bool append)
+    public static void SaveClippingOp(string filename, Paths64? subj,
+      Paths64? subj_open, Paths64? clip, ClipType ct, FillRule fillRule, bool append)
     {
       StreamWriter writer;
       try

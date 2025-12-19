@@ -2,12 +2,11 @@
 
 (*******************************************************************************
 * Author    :  Angus Johnson                                                   *
-* Version   :  Clipper2 - ver.1.0.4                                            *
-* Date      :  6 September 2022                                                *
-* Website   :  http://www.angusj.com                                           *
-* Copyright :  Angus Johnson 2010-2022                                         *
+* Date      :  7 December 2025                                                 *
+* Website   :  https://www.angusj.com                                          *
+* Copyright :  Angus Johnson 2010-2025                                         *
 * Purpose   :  This module provides a very simple SVG Writer for Clipper2      *
-* License   :  http://www.boost.org/LICENSE_1_0.txt                            *
+* License   :  https://www.boost.org/LICENSE_1_0.txt                           *
 *******************************************************************************)
 
 interface
@@ -29,6 +28,27 @@ const
   lime    = $FF00FF00;
   fuscia  = $FFFF00FF;
   aqua    = $FF00FFFF;
+
+type
+
+///////////////////////////////////////////////////////////
+// SvgReader
+///////////////////////////////////////////////////////////
+
+  //TSvgReader will only gets path from **very simple** SVG xml
+  TSvgReader = class
+  private
+    pp: TPathsD;
+  public
+    constructor Create(const filename: string);
+    property Paths: TPathsD read pp;
+  end;
+
+  function GetPathsFromVerySimpleSVG(const filename: string): TPathsD;
+
+///////////////////////////////////////////////////////////
+// SvgWriter
+///////////////////////////////////////////////////////////
 
 type
 
@@ -70,6 +90,7 @@ type
     PenClr    : Cardinal;
     PenWidth  : double;
     ShowCoords: Boolean;
+    ShowFrac  : Boolean;
     IsOpen    : Boolean;
     dashes    : TArrayOfInteger;
   end;
@@ -99,19 +120,25 @@ type
       coordFontColor: Cardinal = black);
     destructor Destroy; override;
 
+    procedure AddPath(const path: TPathD; isOpen: Boolean;
+      brushColor, penColor: Cardinal;
+      penWidth: double; showCoords: Boolean = false); overload;
+
     procedure AddPath(const path: TPath64; isOpen: Boolean;
       brushColor, penColor: Cardinal;
-      penWidth: double; showCoords: Boolean = false);
+      penWidth: double; showCoords: Boolean = false); overload;
 
     procedure AddPaths(const paths: TPaths64; isOpen: Boolean;
       brushColor, penColor: Cardinal;
       penWidth: double; showCoords: Boolean = false); overload;
+    procedure AddDashedPath(const paths: TPaths64; penColor: Cardinal;
+      penWidth: double; const dashes: array of integer); overload;
 
     procedure AddPaths(const paths: TPathsD; isOpen: Boolean;
-      brushColor, penColor: Cardinal;
-      penWidth: double; showCoords: Boolean = false); overload;
+      brushColor, penColor: Cardinal; penWidth: double;
+      showCoords: Boolean = false; showFracs: Boolean = false); overload;
     procedure AddDashedPath(const paths: TPathsD; penColor: Cardinal;
-      penWidth: double; const dashes: array of integer);
+      penWidth: double; const dashes: array of integer); overload;
 
     procedure AddArrow(const center: TPointD;
       radius: double; angleRad: double;
@@ -134,21 +161,193 @@ type
     procedure ClearAll;
   end;
 
-  procedure AddSubject(svg: TSvgWriter; const paths: TPaths64); overload;
+  procedure AddSubject(svg: TSvgWriter; const paths: TPaths64; showCoords: Boolean = false); overload;
   procedure AddOpenSubject(svg: TSvgWriter; const paths: TPaths64); overload;
-  procedure AddClip(svg: TSvgWriter; const paths: TPaths64); overload;
+  procedure AddClip(svg: TSvgWriter; const paths: TPaths64; showCoords: Boolean = false); overload;
   procedure AddSolution(svg: TSvgWriter; const paths: TPaths64; showCoords: Boolean = false); overload;
   procedure AddOpenSolution(svg: TSvgWriter; const paths: TPaths64); overload;
+  procedure AddDots(svg: TSvgWriter; const paths: TPaths64; radius: double; color: Cardinal); overload;
+
   procedure SaveSvg(svg: TSvgWriter; const filename: string;
     width: integer = 0; height: integer = 0; margin: integer = 0); overload;
 
-  procedure AddSubject(svg: TSvgWriter; const paths: TPathsD); overload;
+  procedure AddSubject(svg: TSvgWriter; const paths: TPathsD; showCoords: Boolean = false); overload;
   procedure AddOpenSubject(svg: TSvgWriter; const paths: TPathsD); overload;
-  procedure AddClip(svg: TSvgWriter; const paths: TPathsD); overload;
+  procedure AddClip(svg: TSvgWriter; const paths: TPathsD; showCoords: Boolean = false); overload;
   procedure AddSolution(svg: TSvgWriter; const paths: TPathsD; showCoords: Boolean= false); overload;
   procedure AddOpenSolution(svg: TSvgWriter; const paths: TPathsD); overload;
+  procedure AddDots(svg: TSvgWriter; const paths: TPathsD; radius: double; color: Cardinal); overload;
 
 implementation
+
+///////////////////////////////////////////////////////////
+// SvgReader implementation
+///////////////////////////////////////////////////////////
+
+const
+  space = #32;
+  comma = ',';
+  decPoint = '.';
+
+function SkipOptionalComma(var c: PChar; endC: PChar): Boolean;
+begin
+  while (c < endC) and (c^ <= space) do inc(c);
+  if (c^ = comma) then inc(c);
+  Result := (c < endC);
+end;
+//------------------------------------------------------------------------------
+
+function SkipBlanks(var c: PChar; endC: PChar): Boolean;
+begin
+  while (c < endC) and (c^ <= space) do inc(c);
+  Result := (c < endC);
+end;
+//------------------------------------------------------------------------------
+
+function ParseNum(var c: PChar; endC: PChar; out val: double): Boolean;
+var
+  decPos: integer;
+  isNeg: Boolean;
+  start: PChar;
+begin
+  Result := false;
+
+  //skip white space
+  while (c < endC) and (c^ <= space) do inc(c);
+  if (c = endC) then Exit;
+
+  decPos := -1;
+  isNeg := c^ = '-';
+  if isNeg then inc(c);
+
+  val := 0;
+  start := c;
+  while c < endC do
+  begin
+    if Ord(c^) = Ord(decPoint) then
+    begin
+      if decPos >= 0 then break;
+      decPos := 0;
+    end
+    else if (c^ < '0') or (c^ > '9') then
+      break
+    else
+    begin
+      val := val *10 + Ord(c^) - Ord('0');
+      if decPos >= 0 then inc(decPos);
+    end;
+    inc(c);
+  end;
+  Result := c > start;
+  if not Result then Exit;
+
+  if decPos > 0 then val := val * Power(10, -decPos);
+  if isNeg then val := -val;
+end;
+//------------------------------------------------------------------------------
+
+constructor TSvgReader.Create(const filename: string);
+var
+  i: integer;
+  svgText: string;
+  x, y: double;
+  c, endC: PChar;
+  currCnt, currCap: integer;
+  path: TPathD;
+
+  procedure AddPoint(x,y: double);
+  begin
+    if currCnt = currCap then
+    begin
+      currCap := currCap + 256;
+      SetLength(path, currCap);
+    end;
+    path[currCnt] := PointD(x,y);
+    inc(currCnt);
+  end;
+
+  procedure AddPath;
+  var
+    cnt: integer;
+  begin
+    if currCnt = 0 then Exit;
+    cnt := Length(pp);
+    SetLength(pp, cnt +1);
+    SetLength(path, currCnt);
+    pp[cnt] := path;
+    // reset local path
+    path := nil;
+    currCnt := 0;
+    currCap := 0;
+  end;
+
+begin
+  pp := nil;
+  with TStringList.Create do
+  try
+    LoadFromFile(filename);
+    svgText := Text;
+  finally
+    free;
+  end;
+  i := Pos('path d="M', svgText);
+  if i = 0 then Exit;
+  inc(i, 9);
+  c := @svgText[i];
+  endC := c + Length(svgText) - i +1;
+
+  currCnt := 0; currCap := 0;
+  ParseNum(c, endC, x);
+  SkipOptionalComma(c, endC);
+  if not ParseNum(c, endC, y) then Exit;
+  SkipOptionalComma(c, endC);
+  AddPoint(x, y);
+  while c < endC do
+  begin
+    if not SkipBlanks(c, endC) then Break;
+    if c^ = 'L' then Inc(c)
+    else if (c^ = 'Z') or (c^ = 'M') then
+    begin
+      AddPath;
+      if (c^ = 'Z') then
+      begin
+        Inc(c);
+        // start next path
+        if not SkipBlanks(c, endC) then Break;
+      end;
+      if c^ = 'M' then
+      begin
+        Inc(c);
+        if not ParseNum(c, endC, x) then break;
+        SkipOptionalComma(c, endC);
+        if not ParseNum(c, endC, y) then break;
+      end;
+      AddPoint(x, y);
+      Continue;
+    end;
+
+    ParseNum(c, endC, x);
+    SkipOptionalComma(c, endC);
+    if not ParseNum(c, endC, y) then Break;
+    SkipOptionalComma(c, endC);
+    AddPoint(x, y);
+  end;
+  AddPath;
+end;
+
+function GetPathsFromVerySimpleSVG(const filename: string): TPathsD;
+begin
+  with TSvgReader.Create(filename) do
+  try
+    Result := Paths;
+  finally
+    Free;
+  end;
+end;
+
+///////////////////////////////////////////////////////////
+// SvgWriter implementation
+///////////////////////////////////////////////////////////
 
 const
   MaxRect: TRectD  = (left: MaxDouble;
@@ -217,6 +416,13 @@ begin
   inherited;
 end;
 
+procedure TSvgWriter.AddPath(const path: TPathD; isOpen: Boolean;
+  brushColor, penColor: Cardinal;
+  penWidth: double; showCoords: Boolean);
+begin
+  AddPaths(PathsD(path), isOpen, brushColor, penColor, penWidth, showCoords);
+end;
+
 procedure TSvgWriter.AddPath(const path: TPath64; isOpen: Boolean;
   brushColor, penColor: Cardinal;
   penWidth: double; showCoords: Boolean);
@@ -232,28 +438,53 @@ var
 begin
   if Length(paths) = 0 then Exit;
   new(pi);
-  pi.paths := PathsD(paths);
-  pi.BrushClr := brushColor;
-  pi.PenClr   := penColor;
-  pi.PenWidth := penWidth;
+  pi.paths      := PathsD(paths);
+  pi.BrushClr   := brushColor;
+  pi.PenClr     := penColor;
+  pi.PenWidth   := penWidth;
   pi.ShowCoords := showCoords;
-  pi.IsOpen := isOpen;
+  pi.ShowFrac   := false;
+  pi.IsOpen     := isOpen;
   fPolyInfos.Add(pi);
 end;
 
 procedure TSvgWriter.AddPaths(const paths: TPathsD; isOpen: Boolean;
-  brushColor, penColor: Cardinal;
-  penWidth: double; showCoords: Boolean = false);
+  brushColor, penColor: Cardinal; penWidth: double;
+  showCoords: Boolean = false; showFracs: Boolean = false);
 var
   pi: PPolyInfo;
 begin
   new(pi);
-  pi.paths := Copy(paths, 0, Length(paths));
-  pi.BrushClr := brushColor;
+  pi.paths      := Copy(paths, 0, Length(paths));
+  pi.BrushClr   := brushColor;
+  pi.PenClr     := penColor;
+  pi.PenWidth   := penWidth;
+  pi.ShowCoords := showCoords;
+  pi.ShowFrac   := showFracs;
+  pi.IsOpen := isOpen;
+  fPolyInfos.Add(pi);
+end;
+
+procedure TSvgWriter.AddDashedPath(const paths: TPaths64;
+  penColor: Cardinal; penWidth: double; const dashes: array of integer);
+var
+  pi: PPolyInfo;
+  i, dLen: integer;
+begin
+  dLen := Length(dashes);
+  if dLen = 0 then Exit;
+  new(pi);
+  pi.paths := PathsD(paths);
+  pi.BrushClr := 0;
   pi.PenClr   := penColor;
   pi.PenWidth := penWidth;
-  pi.ShowCoords := showCoords;
-  pi.IsOpen := isOpen;
+  pi.ShowCoords := false;
+  pi.ShowFrac   := false;
+  pi.IsOpen := true;
+  SetLength(pi.dashes, dLen);
+  //Move(dashes[0], pi.dashes, dLen * sizeOf(integer));
+  for i := 0 to High(dashes) do
+    pi.dashes[i] := dashes[i];
   fPolyInfos.Add(pi);
 end;
 
@@ -271,6 +502,7 @@ begin
   pi.PenClr   := penColor;
   pi.PenWidth := penWidth;
   pi.ShowCoords := false;
+  pi.ShowFrac   := true;
   pi.IsOpen := true;
   SetLength(pi.dashes, dLen);
   Move(dashes[0], pi.dashes, dLen * sizeOf(integer));
@@ -350,6 +582,7 @@ begin
     with PPolyInfo(fPolyInfos[i])^ do
     begin
       bounds := Clipper.Core.GetBounds(paths);
+      if bounds.IsEmpty then Continue;
       if (bounds.left < Result.Left) then Result.Left := bounds.Left;
       if (bounds.right> Result.Right) then Result.Right := bounds.Right;
       if (bounds.top < Result.Top) then Result.Top := bounds.Top;
@@ -389,10 +622,16 @@ function TSvgWriter.SaveToFile(const filename: string;
   maxWidth: integer = 0; maxHeight: integer = 0; margin: integer = 20): Boolean;
 var
   i, j, k           : integer;
+  frac              : integer;
+  decimals          : integer;
+  showCo            : boolean;
+  showFr            : boolean;
+  x,y               : double;
   bounds            : TRectD;
   scale             : double;
   offsetX, offsetY  : integer;
-  s, sInline, dashStr: string;
+  s                 : string;
+  sInline, dashStr  : string;
   sl                : TStringList;
   formatSettings: TFormatSettings;
 const
@@ -412,14 +651,38 @@ const
   end;
 
 begin
+  Result := false;
 
-{$IF CompilerVersion > 19}  //Delphi XE +
+{$IF NOT Defined(fpc) AND (CompilerVersion > 19)}   //Delphi XE +
   formatSettings := TFormatSettings.Create;
 {$IFEND}
   formatSettings.DecimalSeparator := '.';
 
-  Result := false;
+  // adjust margin
   if (margin < 20) then margin := 20;
+
+  showCo := false;
+  showFr := false;
+  for i := 0 to fPolyInfos.Count -1 do
+    with PPolyInfo(fPolyInfos[i])^ do
+    if ShowCoords then
+    begin
+      showCo := true;
+      if showFrac then showFr := true;
+
+    end;
+  if showFr then
+    decimals := 2 else
+    decimals := 0;
+
+  if showCo then
+  begin
+    if showFr then
+      inc(margin, Abs(fCoordStyle.FontSize *4)) else
+      inc(margin, Abs(fCoordStyle.FontSize *2));
+  end;
+
+  // get scale and offset
   bounds := GetBounds;
   if bounds.IsEmpty then Exit;
 
@@ -432,6 +695,7 @@ begin
   offsetX := margin - Round(bounds.left * scale);
   offsetY := margin - Round(bounds.top * scale);
 
+  // write SVG
   sl := TStringList.Create;
   try
     if (maxWidth <= 0) or (maxHeight <= 0) then
@@ -449,13 +713,16 @@ begin
         begin
           if Length(paths[j]) < 2 then Continue;
           if not IsOpen and (Length(paths[j]) < 3) then Continue;
-          AddInline(Format('M %1.2f %1.2f L ',
-            [paths[j][0].x * scale + offsetX,
-            paths[j][0].y * scale + offsetY], formatSettings));
+          AddInline(Format('M %1.*f %1.*f L ',
+            [decimals, paths[j][0].x * scale + offsetX,
+            decimals, paths[j][0].y * scale + offsetY], formatSettings));
           for k := 1 to High(paths[j]) do
-            AddInline(Format('%1.2f %1.2f ',
-              [paths[j][k].x * scale + offsetX,
-              paths[j][k].y * scale + offsetY], formatSettings));
+          begin
+            x := paths[j][k].x; y := paths[j][k].y;
+            AddInline(Format('%1.*f %1.*f ',
+              [decimals, x * scale + offsetX, decimals,
+              y * scale + offsetY], formatSettings));
+          end;
           if not IsOpen then AddInline('Z');
         end;
 
@@ -481,14 +748,15 @@ begin
 
         if (ShowCoords) then
         begin
+          if ShowFrac then frac := 2 else frac := 0;
           with fCoordStyle do
             Add(Format('<g font-family="%s" font-size="%d" fill="%s">',
               [FontName, FontSize, ColorToHtml(FontColor)], formatSettings));
           for j := 0 to High(paths) do
             for k := 0 to High(paths[j]) do
               with paths[j][k] do
-                Add(Format('  <text x="%1.2f" y="%1.2f">%1.0f,%1.0f</text>',
-                  [x * scale + offsetX, y * scale + offsetY, x, y],
+                Add(Format('  <text x="%1.2f" y="%1.2f">%1.*f,%1.*f</text>',
+                  [x * scale + offsetX, y * scale + offsetY, frac, x, frac, y],
                   formatSettings));
           Add('</g>'#10);
         end;
@@ -535,9 +803,9 @@ begin
 end;
 
 
-procedure AddSubject(svg: TSvgWriter; const paths: TPaths64);
+procedure AddSubject(svg: TSvgWriter; const paths: TPaths64; showCoords: Boolean = false);
 begin
-  svg.AddPaths(paths, false, $200099FF, $800066FF, 1.0);
+  svg.AddPaths(paths, false, $200099FF, $800066FF, 1.0, showCoords);
 end;
 
 procedure AddOpenSubject(svg: TSvgWriter; const paths: TPaths64);
@@ -545,15 +813,14 @@ begin
   svg.AddPaths(paths, true, $0, $800066FF, 2.2);
 end;
 
-procedure AddClip(svg: TSvgWriter; const paths: TPaths64);
+procedure AddClip(svg: TSvgWriter; const paths: TPaths64; showCoords: Boolean = false);
 begin
-  svg.AddPaths(paths, false, $10FF9900, $80FF6600, 1.0);
+  svg.AddPaths(paths, false, $10FF9900, $80FF6600, 1.0, showCoords);
 end;
 
 procedure AddSolution(svg: TSvgWriter; const paths: TPaths64; showCoords: Boolean);
 begin
-  svg.AddPaths(paths, false, $8066FF66, $FF006600, 1.5, showCoords);
-  //svg.AddPaths(paths, false, $8066FF66, $FF006600, 1.5, showCoords);
+  svg.AddPaths(paths, false, $8066FF66, $FF006600, 1.0, showCoords);
 end;
 
 procedure AddOpenSolution(svg: TSvgWriter; const paths: TPaths64);
@@ -567,9 +834,9 @@ begin
   svg.SaveToFile(filename, width, height, margin);
 end;
 
-procedure AddSubject(svg: TSvgWriter; const paths: TPathsD);
+procedure AddSubject(svg: TSvgWriter; const paths: TPathsD; showCoords: Boolean = false);
 begin
-  svg.AddPaths(paths, false, $200099FF, $800066FF, 1.0);
+  svg.AddPaths(paths, false, $200099FF, $800066FF, 1.0, showCoords);
 end;
 
 procedure AddOpenSubject(svg: TSvgWriter; const paths: TPathsD);
@@ -577,19 +844,37 @@ begin
   svg.AddPaths(paths, true, $0, $400066FF, 2.2);
 end;
 
-procedure AddClip(svg: TSvgWriter; const paths: TPathsD);
+procedure AddClip(svg: TSvgWriter; const paths: TPathsD; showCoords: Boolean = false);
 begin
-  svg.AddPaths(paths, false, $10FF9900, $80FF6600, 1.0);
+  svg.AddPaths(paths, false, $10FF9900, $80FF6600, 1.0, showCoords);
 end;
 
 procedure AddSolution(svg: TSvgWriter; const paths: TPathsD; showCoords: Boolean);
 begin
-  svg.AddPaths(paths, false, $8066FF66, $FF006600, 1.5, showCoords);
+  svg.AddPaths(paths, false, $8066FF66, $FF006600, 1.0, showCoords);
 end;
 
 procedure AddOpenSolution(svg: TSvgWriter; const paths: TPathsD);
 begin
   svg.AddPaths(paths, true, $0, $FF006600, 1.5);
+end;
+
+procedure AddDots(svg: TSvgWriter; const paths: TPaths64; radius: double; color: Cardinal);
+var
+  i,j: integer;
+begin
+  for i := 0 to High(paths) do
+    for j := 0 to High(paths[i]) do
+      svg.AddCircle(paths[i][j], radius, color, color, 1);
+end;
+
+procedure AddDots(svg: TSvgWriter; const paths: TPathsD; radius: double; color: Cardinal);
+var
+  i,j: integer;
+begin
+  for i := 0 to High(paths) do
+    for j := 0 to High(paths[i]) do
+      svg.AddCircle(paths[i][j], radius, color, color, 1);
 end;
 
 end.
